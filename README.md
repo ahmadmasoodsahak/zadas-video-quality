@@ -1,11 +1,13 @@
-# Canlı Kamera + Django Tabanlı AI Upscale
+# Zadas (Kamera - AI Upscale)
+
+## 🎥 Demo Video
+
+![Demo Video](./assets/demo-video.mp4)
 
 Bu proje, tarayıcıdan kamerayı açar ve kareleri Python/Django arka ucuna göndererek anlık olarak çözünürlüğü yükseltilmiş ve filtrelerle iyileştirilmiş görüntüyü geri döndürür.
 
 - Sol panel: Orijinal canlı kamera görüntüsü
 - Sağ panel: Sunucuda (Python/NumPy/Pillow) işlenmiş yükseltilmiş görüntü
-
-İleride ONNX Runtime ile gerçek süper-çözünürlük (SR) modelleri (FSRCNN/ESPCN/ESRGAN türevleri) kolayca entegre edilebilir.
 
 ## Kurulum
 1. Sanal ortam (önerilir):
@@ -21,7 +23,7 @@ Bu proje, tarayıcıdan kamerayı açar ve kareleri Python/Django arka ucuna gö
   - Lite (Hızlı, düşük kaynak)
   - Quality (Daha iyi kalite)
   - Ultra (Maks detay, daha yavaş)
-  - Smooth (Yumuşatma + hafif keskinlik)
+  - Zadas - AI Upscale
   - Denoise (Gürültü azaltma + keskinlik)
 - "Görüntüyü İndir" ile işlenmiş görüntünün anlık kaydını alın.
 
