@@ -2,7 +2,7 @@
 
 ## 🎥 Demo Video
 
-![Demo](./assets/demo.gif)
+![Demo](./assets/demo-video.gif)
 
 Bu proje, tarayıcıdan kamerayı açar ve kareleri Python/Django arka ucuna göndererek anlık olarak çözünürlüğü yükseltilmiş ve filtrelerle iyileştirilmiş görüntüyü geri döndürür.
 
