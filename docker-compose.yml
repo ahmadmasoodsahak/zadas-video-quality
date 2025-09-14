@@ -1,0 +1,26 @@
+version: '3.9'
+services:
+  web:
+    build: .
+    image: videoquality:cuda
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=videoup.settings
+      - PYTHONUNBUFFERED=1
+      - PORT=8000
+    volumes:
+      - .:/app
+      - model_cache:/app/static/models
+    # Enable GPU with NVIDIA Container Toolkit (Compose v2)
+    # The following works with recent Docker Compose: --gpus all equivalent
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Healthcheck defers to Dockerfile's HEALTHCHECK
+volumes:
+  model_cache:

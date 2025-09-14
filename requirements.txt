@@ -1,0 +1,6 @@
+Django>=4.2,<5.0
+opencv-python>=4.9.0.80
+numpy>=1.26
+Pillow>=10.0
+# CUDA hızlandırma için GPU destekli ONNX Runtime
+onnxruntime-gpu>=1.18.0

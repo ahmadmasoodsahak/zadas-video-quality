@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zadas (Kamera - AI Upscale)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background:#0f172a; color:#e2e8f0; }
+    header { padding: 16px 24px; border-bottom:1px solid #233047; }
+    main { padding: 16px 24px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    @media(min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
+    .card { background:#111827; border:1px solid #233047; border-radius:12px; padding:12px; }
+    .title { font-size: 18px; margin: 8px 0 12px; }
+    .stack { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    video, canvas { width:100%; height:auto; background:black; border-radius:8px; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button, select { background:#1f2937; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:8px 12px; cursor:pointer; }
+    button:hover, select:hover { background:#273244; }
+    .note { font-size:12px; color:#9ca3af; }
+    footer { padding: 12px 24px; border-top:1px solid #233047; font-size:12px; color:#94a3b8; }
+    .badge { font-size:11px; background:#0b7; color:#002; padding:2px 6px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ZADAS - AI Upscale</h1>
+    <div class="note">Sol: Orijinal kamera görüntüsü. Sağ: İşlenen yükseltilmiş görüntü.</div>
+  </header>
+  <main>
+    <div class="controls" style="margin-bottom:12px;">
+      <label>
+        Kamera:
+        <select id="cameraSelect"></select>
+      </label>
+      <label>
+        Hedef Çözünürlük:
+        <select id="scaleSelect">
+          <option value="1">1x (orijinal)</option>
+          <option value="1.5">1.5x</option>
+          <option value="2" selected>2x</option>
+        </select>
+      </label>
+      <label>
+        AI Modeli:
+        <select id="modelSelect">
+          <option value="lite" selected>Lite (Hızlı, düşük kaynak)</option>
+          <option value="quality">Quality (Daha iyi kalite)</option>
+          <option value="ultra">Ultra (Maks detay, daha yavaş)</option>
+          <option value="smooth">Smooth (Yumuşatma + hafif keskinlik)</option>
+          <option value="denoise">Denoise (Gürültü azaltma + keskinlik)</option>
+          <option value="fsrcnn">FSRCNN x2 (GPU/ONNX, CUDA)</option>
+        </select>
+      </label>
+      <button id="startBtn">Kamerayı Başlat</button>
+      <button id="stopBtn" disabled>Durdur</button>
+      <button id="snapBtn" disabled>Görüntüyü İndir</button>
+      <label>
+        Gri ton:
+        <input type="checkbox" id="grayscaleToggle"/>
+      </label>
+      <label>
+        Kontrast:
+        <input type="range" id="contrastRange" min="0.5" max="2.0" step="0.1" value="1.0"/>
+      </label>
+      <span id="status" class="badge">Hazır</span>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2 class="title">Orijinal</h2>
+        <video id="video" playsinline autoplay muted></video>
+        <div class="stack">
+          <span class="note" id="origInfo">-</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="title">AI Upscaled (yükseltilmiş)</h2>
+        <canvas id="canvas"></canvas>
+        <div class="stack">
+          <span class="note" id="upInfo">-</span>
+        </div>
+      </section>
+    </div>
+
+    <p class="note" style="margin-top:12px;">Bu sürüm, kareleri Python/Django API'ına gönderir ve NumPy/Pillow ile sunucu tarafında işler. İstenirse ONNX tabanlı gerçek SR modelleri eklenebilir.</p>
+  </main>
+  <footer>
+    <span>© 2025</span>
+  </footer>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const scaleSelect = document.getElementById('scaleSelect');
+    const modelSelect = document.getElementById('modelSelect');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const snapBtn = document.getElementById('snapBtn');
+    const grayscaleToggle = document.getElementById('grayscaleToggle');
+    const contrastRange = document.getElementById('contrastRange');
+    const statusEl = document.getElementById('status');
+    const origInfo = document.getElementById('origInfo');
+    const upInfo = document.getElementById('upInfo');
+
+    let stream = null;
+    let timer = null;
+    let lastProcessed = 0;
+
+    const work = document.createElement('canvas');
+    const wctx = work.getContext('2d');
+
+    async function listCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      cameraSelect.innerHTML = '';
+      cams.forEach((cam, i) => {
+        const opt = document.createElement('option');
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label || `Kamera ${i+1}`;
+        cameraSelect.appendChild(opt);
+      });
+    }
+
+    async function startCamera() {
+      stopCamera();
+      status('Kamera açılıyor...');
+      const deviceId = cameraSelect.value || undefined;
+      const constraints = { video: deviceId ? { deviceId: { exact: deviceId } } : { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false };
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await video.play();
+        startBtn.disabled = true; stopBtn.disabled = false; snapBtn.disabled = false;
+        status('Çalışıyor');
+        processLoop();
+      } catch (e) {
+        console.error(e);
+        alert('Kamera erişilemedi: ' + e.message);
+        status('Hata');
+      }
+    }
+
+    function stopCamera() {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      startBtn.disabled = false; stopBtn.disabled = true; snapBtn.disabled = true;
+    }
+
+    function status(t){ statusEl.textContent = t; }
+
+    function grabFrame() {
+      const sw = video.videoWidth; const sh = video.videoHeight;
+      if (!sw || !sh) return null;
+      work.width = sw; work.height = sh;
+      wctx.drawImage(video, 0, 0);
+      origInfo.textContent = `${sw}x${sh}`;
+      return work.toDataURL('image/jpeg', 0.9);
+    }
+
+    async function sendToServer(b64) {
+      const body = new URLSearchParams();
+      body.append('image', b64);
+      body.append('scale', scaleSelect.value);
+      body.append('model', modelSelect.value);
+      body.append('grayscale', grayscaleToggle.checked ? '1' : '0');
+      body.append('contrast', contrastRange.value);
+      const resp = await fetch('/api/process/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+      if (!resp.ok) throw new Error('Sunucu hatası: ' + resp.status);
+      const data = await resp.json();
+      return data.image;
+    }
+
+    async function processOnce() {
+      if (!stream) return;
+      const now = performance.now();
+      // İstek yoğunluğunu sınırlamak için küçük bir bekleme bırakabilirsiniz; gerçek zaman için kaldırıldı
+      // if (now - lastProcessed < 30) return;
+      const b64 = grabFrame();
+      if (!b64) return;
+      try {
+        status('İşleniyor...');
+        const outB64 = await sendToServer(b64);
+        const img = new Image();
+        img.onload = () => {
+          const scale = parseFloat(scaleSelect.value);
+          canvas.width = img.width; canvas.height = img.height;
+          const cctx = canvas.getContext('2d');
+          cctx.drawImage(img, 0, 0);
+          upInfo.textContent = `${img.width}x${img.height} | ölçek ${scale}x | model ${modelSelect.value}`;
+          status('Çalışıyor');
+        };
+        img.src = outB64;
+        lastProcessed = now;
+      } catch (e) {
+        console.error(e);
+        status('Hata: ' + e.message);
+      }
+    }
+
+    function processLoop(){
+      // requestAnimationFrame ile daha akıcı akış; her frame'de yalnızca son isteğin bitmesini bekleyerek kuyruğu kontrol eder
+      let busy = false;
+      async function rafLoop(){
+        if (!stream) return;
+        if (!busy) {
+          busy = true;
+          try { await processOnce(); } finally { busy = false; }
+        }
+        requestAnimationFrame(rafLoop);
+      }
+      requestAnimationFrame(rafLoop);
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    snapBtn.addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'upscaled.png';
+      a.click();
+    });
+
+    navigator.mediaDevices?.getUserMedia?.({ video: true })
+      .then(async tmp => {
+        tmp.getTracks().forEach(t => t.stop());
+        await listCameras();
+        status('Hazır');
+      })
+      .catch(() => { listCameras(); });
+  </script>
+</body>
+</html>
